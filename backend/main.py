@@ -1,27 +1,31 @@
-from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.tools.retriever import create_retriever_tool
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain import hub
-from langchain.tools import tool
-from langchain.tools import Tool
-import os
+from langchain_core.messages import HumanMessage
+from langgraph.graph import StateGraph, START
+from langgraph.graph import MessagesState
+from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import tools_condition
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph.state import CompiledStateGraph # type
+from langchain_core.messages import  HumanMessage, SystemMessage
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import os
+from fastapi import FastAPI, HTTPException
 import uvicorn
 
 load_dotenv()
 
 app = FastAPI()
 
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash",
-                             google_api_key=os.getenv("GOOGLE_API_KEY"))
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash", 
+    google_api_key=os.getenv("GOOGLE_API_KEY")
+)
 
 search = TavilySearchResults(tavily_api_key=os.getenv("TAVILY_API_KEY"))
 
@@ -44,525 +48,160 @@ retriever_tool = create_retriever_tool(
     "Search for information about healthline, food, diet and nutrition. For any questions about food and nutrition, healthy diet related and just answer the question, don't explain much, you must use this tool!",
 )
 
-@tool("calorie_calculator")
-def calorie_calculator_tool(input_text: str):
+def calorie_calculator_tool(gender: str, weight: float, height: float, age: int, activity_level: str) -> dict:
     """
-    Calculate the estimated daily calorie needs based on user inputs such as weight, height, age, gender, and activity level,
-    and generate a basic diet plan to meet these calorie requirements with balanced meals.
-    Also, provide guidance if the user needs to gain or lose weight based on calorie needs, age, and gender.
+    Tool to compute daily caloric needs based on user input using the Harris-Benedict Equation.
+    
+    Args:
+        sex (str): The user's gender ('male' or 'female').
+        weight (float): The user's weight in kilograms.
+        height (float): The user's height in centimeters.
+        age (int): The user's age in years.
+        activity_level (str): The user's activity level ('sedentary', 'light', 'moderate', 'active', 'very_active').
+    
+    Returns:
+        dict: A dictionary containing:
+            - 'bmr': Basal Metabolic Rate (calories burned at rest).
+            - 'daily_calories': Estimated daily caloric needs based on activity level.
+            - 'maintenance_plan': A guide for maintaining current weight.
     """
-    try:
-        params = {}
-        for param in input_text.split(','):
-            key, value = param.split('is')
-            params[key.strip()] = value.strip()
-
-        weight = float(params.get('weight')) 
-        height = float(params.get('height'))
-        age = int(params.get('age'))
-        gender = params.get('gender').lower()
-        activity_level = params.get('activity_level').lower()
-
-        # Calculate daily calorie needs based on user gender and activity level
-        if gender == "male":
-            calories = 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age)
-        elif gender == "female":
-            calories = 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age)
+    def calculate_daily_calories(gender, weight, height, age, activity_level):
+        # Basal Metabolic Rate (BMR) calculation
+        if gender.lower() == "male":
+            bmr = 10 * weight + 6.25 * height - 5 * age + 5
+        elif gender.lower() == "female":
+            bmr = 10 * weight + 6.25 * height - 5 * age - 161
         else:
-            return {"response": "Gender must be either 'male' or 'female'."}
+            raise ValueError("Invalid sex. Please use 'male' or 'female'.")
 
-        calories *= {
+        # Activity multipliers
+        activity_multipliers = {
             "sedentary": 1.2,
             "light": 1.375,
             "moderate": 1.55,
-            "active": 1.725
-        }.get(activity_level, 1.55)
-
-       # Define base_calories adjustment logic
-        base_calories = calories  # Initialize with the calculated calories
-
-        if gender == "female":
-            if activity_level == "lightly":
-                if 2 <= age <= 6:
-                    base_calories = min(max(1000, calories), 1400)
-                elif 7 <= age <= 18:
-                    base_calories = min(max(1200, calories), 1800)
-                elif 19 <= age <= 60:
-                    base_calories = min(max(1600, calories), 2000)
-                elif age >= 61:
-                    base_calories = max(1600, calories)
-            elif activity_level == "active":
-                if 2 <= age <= 6:
-                    base_calories = min(max(1000, calories), 1600)
-                elif 7 <= age <= 18:
-                    base_calories = min(max(1600, calories), 2400)
-                elif 19 <= age <= 60:
-                    base_calories = min(max(1800, calories), 2400)
-                elif age >= 61:
-                    base_calories = min(max(1800, calories), 2000)
-
-        elif gender == "male":
-            if activity_level == "lightly":
-                if 2 <= age <= 6:
-                    base_calories = min(max(1000, calories), 1400)
-                elif 7 <= age <= 18:
-                    base_calories = min(max(1400, calories), 2400)
-                elif 19 <= age <= 60:
-                    base_calories = min(max(2200, calories), 2600)
-                elif age >= 61:
-                    base_calories = max(2000, calories)
-            elif activity_level == "active":
-                if 2 <= age <= 6:
-                    base_calories = min(max(1000, calories), 1800)
-                elif 7 <= age <= 18:
-                    base_calories = min(max(1600, calories), 3200)
-                elif 19 <= age <= 60:
-                    base_calories = min(max(2400, calories), 3000)
-                elif age >= 61:
-                    base_calories = min(max(2200, calories), 2600)
-
-        # Determine if the user needs to gain, lose, or maintain weight
-        if calories < base_calories:
-            weight_goal = "You should increase your calorie intake to gain weight."
-        elif calories > base_calories:
-            weight_goal = "You should decrease your calorie intake to lose weight."
-        else:
-            weight_goal = "Your calorie intake is appropriate for maintaining your current weight."
-
-        # Define diet plans
-        diet_plans = {
-            "1500": {
-                "goal": "Weight Loss",
-                "plan": [
-                    "Breakfast: Greek yogurt with berries and chia seeds or oatmeal with sliced banana",
-                    "Morning Snack: Apple with almond butter or a handful of mixed nuts",
-                    "Lunch: Grilled chicken salad with greens and vinaigrette or quinoa salad with chickpeas and cucumber",
-                    "Afternoon Snack: Cottage cheese with cucumber or carrot sticks with hummus",
-                    "Dinner: Baked salmon, asparagus, and quinoa or stir-fried tofu with broccoli and brown rice",
-                    "Evening Snack: Almonds or a small piece of dark chocolate"
-                ]
-            },
-            "1800": {
-                "goal": "Weight Maintenance",
-                "plan": [
-                    "Breakfast: Scrambled eggs with spinach, whole-grain toast or smoothie with spinach and protein powder",
-                    "Morning Snack: Orange and walnuts or Greek yogurt with honey",
-                    "Lunch: Turkey wrap with hummus and veggies or lentil soup with whole-grain bread",
-                    "Afternoon Snack: Banana with peanut butter or rice cakes with avocado",
-                    "Dinner: Grilled chicken, sweet potato, and broccoli or baked tilapia with quinoa and green beans",
-                    "Evening Snack: Cottage cheese with berries or air-popped popcorn"
-                ]
-            },
-            "2000": {
-                "goal": "Moderate Weight Gain",
-                "plan": [
-                    "Breakfast: Overnight oats with banana and peanut butter or avocado toast with eggs",
-                    "Morning Snack: Smoothie with protein powder or a protein bar",
-                    "Lunch: Brown rice bowl with black beans and salsa or chicken stir-fry with vegetables",
-                    "Afternoon Snack: Toast with cottage cheese and tomatoes or fruit salad",
-                    "Dinner: Steak, mashed potatoes, and green beans or chicken curry with brown rice",
-                    "Evening Snack: Greek yogurt with honey and pumpkin seeds or protein shake"
-                ]
-            },
-            "2200": {
-                "goal": "Active Weight Maintenance/Gain",
-                "plan": [
-                    "Breakfast: Omelet with veggies and whole-grain toast or smoothie bowl with fruits and granola",
-                    "Morning Snack: Greek yogurt with granola and blueberries or nut butter on whole-grain bread",
-                    "Lunch: Tuna wrap with veggies or quinoa salad with chickpeas and feta",
-                    "Afternoon Snack: Apple and almonds or veggie sticks with hummus",
-                    "Dinner: Roasted chicken, brown rice, and carrots or fish tacos with cabbage slaw",
-                    "Evening Snack: Dark chocolate with walnuts or a handful of dried fruit"
-                ]
-            },
-            "2500": {
-                "goal": "High-Calorie for Weight Gain",
-                "plan": [
-                    "Breakfast: Smoothie bowl with peanut butter and granola or pancakes with maple syrup",
-                    "Morning Snack: Crackers with cheese and apple or energy bites with oats and honey",
-                    "Lunch: Quinoa bowl with chickpeas and roasted veggies or burrito with beans and cheese",
-                    "Afternoon Snack: Protein bar or mixed nuts and dried fruit or yogurt with granola",
-                    "Dinner: Pasta with ground turkey and salad or lamb kebabs with rice and grilled vegetables",
-                    "Evening Snack: Cottage cheese with honey and mango or fruit and nut mix"
-                ]
-            }
+            "active": 1.725,
+            "very_active": 1.9
         }
         
-        # Select the appropriate diet plan based on the calculated calories
-        if calories <= 1500:
-            selected_diet_plan = diet_plans["1500"]
-        elif calories <= 1800:
-            selected_diet_plan = diet_plans["1800"]
-        elif calories <= 2000:
-            selected_diet_plan = diet_plans["2000"]
-        elif calories <= 2200:
-            selected_diet_plan = diet_plans["2200"]
-        else:
-            selected_diet_plan = diet_plans["2500"]
+        if activity_level not in activity_multipliers:
+            raise ValueError("Invalid activity level. Choose from 'sedentary', 'light', 'moderate', 'active', or 'very_active'.")
 
-        # Output estimated daily calories, diet plan, and weight guidance
+        # Calculate daily caloric needs
+        daily_calories = bmr * activity_multipliers[activity_level]
+        
+        # Create a maintenance plan
+        maintenance_plan = {
+            "maintain": round(daily_calories),
+            "gain_weight": round(daily_calories + 500),
+            "lose_weight": round(daily_calories - 500)
+        }
+        
         return {
-            "Calculated daily calories": f"{int(calories)} kcal",
-            "Adjusted daily calories (base_calories)": f"{int(base_calories)} kcal",
-            "Weight Recommendation": weight_goal,
-            "Diet Plan": selected_diet_plan,
+            "bmr": round(bmr, 2),
+            "daily_calories": round(daily_calories, 2),
+            "maintenance_plan": maintenance_plan
         }
 
-    except Exception as e:
-        return {"response": f"Error parsing input: {str(e)}"}
-    
-calorie_cal_tool = Tool(
-    name="calorie_calculator_tool",
-    func=calorie_calculator_tool,
-    description="""You are a tool caller, you have to call calorie_calculator_tool whenever we need a diet plan and want to calculate the calories. Calculate the estimated daily calorie needs based on user inputs such as weight, height, age, gender, and activity level,
-    and generate a basic diet plan to meet these calorie requirements with balanced meals.
-    Also, provide guidance if the user needs to gain or lose weight based on calorie needs, age, and gender."""
-)
+    # Return calculated daily calories
+    return calculate_daily_calories(gender, weight, height, age, activity_level)
 
-tools = [calorie_calculator_tool]
-prompt = hub.pull("hwchase17/openai-functions-agent")
-agent = create_tool_calling_agent(llm, tools, prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
-# Set up message history for chat
-message_history = ChatMessageHistory()
-agent_with_chat_history = RunnableWithMessageHistory(
-    agent_executor,
-    lambda session_id: message_history,
-    input_messages_key="input",
-    history_messages_key="chat_history",
+tools = [search, retriever_tool, calorie_calculator_tool]
+
+llm_with_tools = llm.bind_tools(tools)
+
+# System message
+sys_msg = SystemMessage(content='''You are a helpful customer support assistant for human calorie calculation.
+            You need to gather the following information from the user:
+            - Person's age, weight, height, pronouns (e.g., she, he, or similar), and activity level (e.g., sedentary, moderate, active, very active).
+            
+            Based on their pronouns, infer if the user is male or female. Do this implicitly and avoid explicitly asking about gender. 
+            Similarly, if they provide information about their daily routine or habits, interpret their activity level. 
+            
+            If you are unable to discern any of this information, politely ask them to clarify! 
+            Never make random guesses if the details remain unclear.
+
+            Once all the necessary information is gathered, call the relevant tool to perform the calorie calculation.
+
+            **Tool to check If user need to gain weight or loss weight**
+             - **adjust_calories_for_goal**: Adjust the daily caloric needs based on the user's goal (gain or lose weight). Use the user's provided age, gender, activity level, and calories to calculate adjusted caloric intake for the goal.
+
+            **Important Tools for Diet and Health Information**:
+            - **TavilySearchResults**: Use this tool to search for health, food, diet, and nutrition information by making API calls with `TAVILY_API_KEY`. This will help you gather relevant resources when a user asks for diet suggestions or general nutrition-related queries.
+            
+            - **Web Base Loader**:
+                - `loader1`: Extract data from [Healthline 1500 Calorie Diet](https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat).
+                
+            - **Document Handling**:
+                - Use `WebBaseLoader` to load content from the above health-related sites.
+                - Combine the documents from all three sources using `docs1 for a broader perspective.
+                - Split the doc1 into smaller chunks with `RecursiveCharacterTextSplitter` to ensure the content is manageable and precise.
+                - Use `FAISS` for vectorizing documents and creating a retriever tool, which can search for the most relevant information.
+
+            **Retriever Tool for Searching Information**:
+            - Create a `retriever_tool` from the vector retriever to search through the documents. For any user questions related to food, nutrition, health or healthy diets, use the retriever to fetch relevant content from Healthline, MSD Manual, or EatingWell.
+            
+            **When answering questions**:
+            - Always use the retriever tool to provide concise and relevant answers about food, nutrition, and diet. Don't over-explain; just provide the information needed. 
+            After gathering the user's details and answering any inquiries, proceed to calculate the user's calorie needs and provide a personalized diet plan.
+''')
+
+
+# Node
+def assistant(state: MessagesState) -> MessagesState:
+    return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
+
+# Build graph
+builder: StateGraph = StateGraph(MessagesState)
+
+# Define nodes: these do the work
+builder.add_node("assistant", assistant)
+builder.add_node("tools", ToolNode(tools))
+
+# Define edges: these determine how the control flow moves
+builder.add_edge(START, "assistant")
+builder.add_conditional_edges(
+    "assistant",
+    # If the latest message (result) from assistant is a tool call -> tools_condition routes to tools
+    # If the latest message (result) from assistant is a not a tool call -> tools_condition routes to END
+    tools_condition,
 )
+builder.add_edge("tools", "assistant")
+memory: MemorySaver = MemorySaver()
+react_graph_memory: CompiledStateGraph = builder.compile(checkpointer=memory)
 
 class UserInput(BaseModel):
-    input_text: str  
+    input_text: str 
 
+# API endpoint
 @app.post("/generateanswer")
 async def generate_answer(user_input: UserInput):
     try:
-        response = agent_with_chat_history.invoke(
-            {"input": user_input.input_text},
-            config={"configurable": {"session_id": "test123"}}
-        )
+        messages = [HumanMessage(content=user_input.input_text)]
+        response = react_graph_memory.invoke({"messages": messages}, config={"configurable": {"thread_id": "1"}})
 
-        if response and "output" in response:
-            return {"response": response["output"]}
+        # Extract the response from the graph output
+        if response and "messages" in response:
+            # Extract the last message (assistant's response)
+            assistant_response = response["messages"][-1].content
+            return {"response": assistant_response}
         else:
             return {"response": "No response generated."}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "_main_":
+# Run the application
+if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)
 
 
 
+# # Specify a thread
+# config1 = {"configurable": {"thread_id": "1"}}
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# from langchain.agents import AgentExecutor, create_tool_calling_agent
-# from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-# from langchain_community.tools.tavily_search import TavilySearchResults
-# from langchain_community.document_loaders import WebBaseLoader
-# from langchain_community.vectorstores import FAISS
-# from langchain_text_splitters import RecursiveCharacterTextSplitter
-# from langchain.tools.retriever import create_retriever_tool
-# from langchain_community.chat_message_histories import ChatMessageHistory
-# from langchain_core.runnables.history import RunnableWithMessageHistory
-# from langchain import hub
-# from langchain.tools import tool
-# from langchain.tools import Tool
-# import os
-# from dotenv import load_dotenv
-# from fastapi import FastAPI, HTTPException
-# from pydantic import BaseModel
-# import uvicorn
-
-# load_dotenv()
-
-# app = FastAPI()
-
-# llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash",
-#                              google_api_key=os.getenv("GOOGLE_API_KEY"))
-
-# search = TavilySearchResults(tavily_api_key=os.getenv("TAVILY_API_KEY"))
-
-# loader1 = WebBaseLoader("https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat")
-# loader2 = WebBaseLoader("https://www.msdmanuals.com/home")
-# loader3 = WebBaseLoader("https://www.eatingwell.com/category/4305/weight-loss-meal-plans/")
-# docs1 = loader1.load()
-# docs2 = loader2.load()
-# docs3 = loader3.load()
-# combined_docs = docs1 + docs2 + docs3
-# documents = RecursiveCharacterTextSplitter(
-#     chunk_size=1000, chunk_overlap=200
-# ).split_documents(combined_docs)
-# vector = FAISS.from_documents(documents, GoogleGenerativeAIEmbeddings(model="models/embedding-001"))
-
-# retriever = vector.as_retriever()
-# retriever_tool = create_retriever_tool(
-#     retriever,
-#     "healthline_search",
-#     "Search for information about healthline, food and nutrition. For any questions about food and nutrition, healthy diet related and just answer the question, don't explain much, you must use this tool!",
-# )
-
-# @tool("calorie_calculator")
-# def calorie_calculator_tool(input_text: str):
-#     """
-#     Calculate the estimated daily calorie needs based on user inputs such as weight, height, age, gender, and activity level,
-#     and
-#     Also, provide guidance if the user needs to gain or lose weight based on calorie needs, age, and gender.
-#     """
-#     try:
-#         params = {}
-#         for param in input_text.split(','):
-#             key, value = param.split('is')
-#             params[key.strip()] = value.strip()
-
-#         weight = float(params.get('weight')) 
-#         height = float(params.get('height'))
-#         age = int(params.get('age'))
-#         gender = params.get('gender').lower()
-#         activity_level = params.get('activity_level').lower()
-
-#         # Calculate daily calorie needs based on user gender and activity level
-#         if gender == "male":
-#             calories = 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age)
-#         elif gender == "female":
-#             calories = 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age)
-#         else:
-#             return {"response": "Gender must be either 'male' or 'female'."}
-
-#         calories *= {
-#             "sedentary": 1.2,
-#             "light": 1.375,
-#             "moderate": 1.55,
-#             "active": 1.725
-#         }.get(activity_level, 1.55)
-
-#         # Define base_calories adjustment logic
-#         base_calories = calories  # Initialize with the calculated calories
-
-#         if gender == "female":
-#             if activity_level == "light":
-#                 if 2 <= age <= 6:
-#                     base_calories = min(max(1000, calories), 1400)
-#                 elif 7 <= age <= 18:
-#                     base_calories = min(max(1200, calories), 1800)
-#                 elif 19 <= age <= 60:
-#                     base_calories = min(max(1600, calories), 2000)
-#                 elif age >= 61:
-#                     base_calories = max(1600, calories)
-#             elif activity_level == "active":
-#                 if 2 <= age <= 6:
-#                     base_calories = min(max(1000, calories), 1600)
-#                 elif 7 <= age <= 18:
-#                     base_calories = min(max(1600, calories), 2400)
-#                 elif 19 <= age <= 60:
-#                     base_calories = min(max(1800, calories), 2400)
-#                 elif age >= 61:
-#                     base_calories = min(max(1800, calories), 2000)
-
-#         elif gender == "male":
-#             if activity_level == "light":
-#                 if 2 <= age <= 6:
-#                     base_calories = min(max(1000, calories), 1400)
-#                 elif 7 <= age <= 18:
-#                     base_calories = min(max(1400, calories), 2400)
-#                 elif 19 <= age <= 60:
-#                     base_calories = min(max(2200, calories), 2600)
-#                 elif age >= 61:
-#                     base_calories = max(2000, calories)
-#             elif activity_level == "active":
-#                 if 2 <= age <= 6:
-#                     base_calories = min(max(1000, calories), 1800)
-#                 elif 7 <= age <= 18:
-#                     base_calories = min(max(1600, calories), 3200)
-#                 elif 19 <= age <= 60:
-#                     base_calories = min(max(2400, calories), 3000)
-#                 elif age >= 61:
-#                     base_calories = min(max(2200, calories), 2600)
-
-#         # Determine if the user needs to gain, lose, or maintain weight
-#         if calories < base_calories:
-#             weight_goal = "You should increase your calorie intake to gain weight."
-#         elif calories > base_calories:
-#             weight_goal = "You should decrease your calorie intake to lose weight."
-#         else:
-#             weight_goal = "Your calorie intake is appropriate for maintaining your current weight."
-
-       
-#         # Output estimated daily calories, diet plan, and weight guidance
-#         return {
-#             "Calculated daily calories": f"{int(calories)} kcal",
-#             "Adjusted daily calories (base_calories)": f"{int(base_calories)} kcal",
-#             "Weight Recommendation": weight_goal,
-#         }
-
-#     except Exception as e:
-#         return {"response": f"Error parsing input: {str(e)}"}
-
-# calorie_cal_tool = Tool(
-#     name="calorie_calculator_tool",
-#     func=calorie_calculator_tool,
-#     description="calculate the calories, moreover, also ask some questions like any alergies etc and mention the weight goal and the answer can be in sentences, then let them know that how much calories they should nee to intake."
-# )
-
-# @tool("advanced_diet_planner")
-# def advanced_diet_planner_tool(user_data: dict):
-#     """
-#     Generate a weekly meal plan tailored to user goals, dietary preferences, calorie needs, and nutrient goals.
-#     Provides daily macronutrient breakdowns, rotation of meals for variety, and custom meal suggestions based on user preferences.
-#     """
-
-#     # User input parsing and defaults
-#     goal = user_data.get("goal")
-#     dietary_pref = user_data.get("dietary_preference")
-#     calorie_needs = user_data.get("calories")
-#     nutrient_goals = user_data.get("nutrient_goals", {"fiber": 25, "vitamin_c": 75})
-#     preferred_cuisines = user_data.get("preferred_cuisines", ["Mediterranean", "Asian"])
-
-#     # Macronutrient ratios based on goals
-#     ratios = {
-#         "weight loss": {"protein": 0.35, "carbs": 0.35, "fats": 0.30},
-#         "muscle gain": {"protein": 0.40, "carbs": 0.40, "fats": 0.20},
-#         "maintain": {"protein": 0.30, "carbs": 0.45, "fats": 0.25}
-#     }
-#     macros = ratios.get(goal, ratios["maintain"])
-
-#     # Example weekly meal rotation (varies daily for variety)
-#     weekly_meals = {
-#         "Monday": ["Greek yogurt with berries", "Quinoa salad", "Grilled salmon"],
-#         "Tuesday": ["Avocado smoothie", "Buddha bowl", "Lentil curry"],
-#         "Wednesday": ["Chia pudding", "Chicken wrap", "Vegetable stir-fry"],
-#         "Thursday": ["Smoothie bowl", "Bean salad", "Stuffed bell peppers"],
-#         "Friday": ["Egg muffins", "Falafel wrap", "Shrimp stir-fry"],
-#         "Saturday": ["Omelet with veggies", "Veggie burrito", "Tofu stir-fry"],
-#         "Sunday": ["Pancakes with fruit", "Caesar salad", "Baked cod with veggies"]
-#     }
-
-#     # Adapt meals based on dietary preferences and nutrient goals
-#     if dietary_pref == "vegetarian":
-#         for day, meals in weekly_meals.items():
-#             weekly_meals[day] = [
-#                 meal.replace("chicken", "tofu").replace("salmon", "chickpeas") for meal in meals
-#             ]
-
-#     # Detailed daily breakdown
-#     daily_plan = {
-#         day: {
-#             "Meals": meals,
-#             "Nutrient Breakdown": {
-#                 "Protein": round(macros["protein"] * calorie_needs / 4),
-#                 "Carbohydrates": round(macros["carbs"] * calorie_needs / 4),
-#                 "Fats": round(macros["fats"] * calorie_needs / 9),
-#                 "Fiber (g)": nutrient_goals.get("fiber", 25),
-#                 "Vitamin C (mg)": nutrient_goals.get("vitamin_c", 75)
-#             },
-#             "Calorie Allocation": {
-#                 "Breakfast": int(calorie_needs * 0.25),
-#                 "Lunch": int(calorie_needs * 0.30),
-#                 "Dinner": int(calorie_needs * 0.25),
-#                 "Snacks": int(calorie_needs * 0.20)
-#             }
-#         } for day, meals in weekly_meals.items()
-#     }
-
-#     # Weekly grocery list based on meal rotation and dietary restrictions
-#     grocery_list = {
-#         "Proteins": ["Greek yogurt", "Chicken", "Tofu", "Eggs"],
-#         "Carbohydrates": ["Quinoa", "Whole grain bread", "Oats"],
-#         "Fats": ["Olive oil", "Avocado", "Nuts"],
-#         "Fruits & Vegetables": ["Berries", "Spinach", "Sweet potatoes", "Bell peppers"]
-#     }
-#     if dietary_pref == "vegetarian":
-#         grocery_list["Proteins"].remove("Chicken")
-
-#     # Enhanced output including meal rotation, calorie distribution, and nutritional needs
-#     diet_plan = {
-#         "Caloric Needs": f"{int(calorie_needs)} kcal",
-#         "Weekly Meal Plan": daily_plan,
-#         "Grocery List": grocery_list,
-#         "Suggested Nutrient Goals": nutrient_goals
-#     }
-
-#     return diet_plan
-
-# diet_tool = Tool(
-#     name="advanced_diet_planner_tool",
-#     func=advanced_diet_planner_tool,
-#     description="Generate a weekly meal plan tailored to user goals, dietary preferences, calorie needs, and nutrient goals, and the answer could be in sectance and you have to detect yourself. Provides daily macronutrient breakdowns, rotation of meals for variety, and custom meal suggestions based on user preferences."
-# )
-
-
-# tools = [search, retriever_tool, calorie_cal_tool, diet_tool]
-# prompt = hub.pull("hwchase17/openai-functions-agent")
-# agent = create_tool_calling_agent(llm, tools, prompt)
-# agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-
-# # Set up message history for chat
-# message_history = ChatMessageHistory()
-# agent_with_chat_history = RunnableWithMessageHistory(
-#     agent_executor,
-#     lambda session_id: message_history,
-#     input_messages_key="input",
-#     history_messages_key="chat_history",
-# )
-
-# class UserInput(BaseModel):
-#     input_text: str  
-
-# @app.post("/generateanswer")
-# async def generate_answer(user_input: UserInput):
-#     try:
-#         response = agent_with_chat_history.invoke(
-#             {"input": user_input.input_text},
-#             config={"configurable": {"session_id": "test123"}}
-#         )
-
-#         if response and "output" in response:
-#             return {"response": response["output"]}
-#         else:
-#             return {"response": "No response generated."}
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# if __name__ == "__main__":
-#     uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)
+# messages = [HumanMessage(content="How much would I save by switching to solar panels if my monthly electricity cost is $200?")]
+# messages = react_graph_memory.invoke({"messages": messages}, config1)
+# for m in messages['messages']:
+#     m.pretty_print()

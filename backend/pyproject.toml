@@ -15,7 +15,10 @@ uvicorn = "^0.32.0"
 fastapi = "^0.115.3"
 faiss-cpu = "1.8.0.post1"
 beautifulsoup4 = "^4.12.3"
+langgraph = "^0.2.53"
 
+[tool.poetry.scripts]
+dev = 'main:__name__'
 
 [build-system]
 requires = ["poetry-core"]
