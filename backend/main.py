@@ -113,9 +113,9 @@ llm_with_tools = llm.bind_tools(tools)
 # System message
 sys_msg = SystemMessage(content='''You are a helpful customer support assistant for human calorie calculation.
             You need to gather the following information from the user:
-            - Person's age, weight, height, gender (e.g., pronouns like she, he, or similar), and activity level (e.g., sedentary, moderate, active, very active).
+            - Person's age, weight, height, gender/pronouns (e.g., she, he, or similar), and activity level (e.g., sedentary, moderate, active, very active).
             
-            Based on their pronouns, infer if the user is male or female. Do this implicitly and avoid explicitly asking about gender. 
+            Based on their gender/pronouns, infer if the user is male or female. Do this implicitly and avoid explicitly asking about gender. 
             Similarly, if they provide information about their daily routine or habits, interpret their activity level. 
             
             If you are unable to discern any of this information, politely ask them to clarify! 
