@@ -29,16 +29,16 @@ llm = ChatGoogleGenerativeAI(
 
 search = TavilySearchResults(tavily_api_key=os.getenv("TAVILY_API_KEY"))
 
-loader1 = WebBaseLoader("https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat")
+# loader1 = WebBaseLoader("https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat")
 # loader2 = WebBaseLoader("https://www.msdmanuals.com/home")
-# loader3 = WebBaseLoader("https://www.eatingwell.com/category/4305/weight-loss-meal-plans/")
-docs1 = loader1.load()
+loader3 = WebBaseLoader("https://www.eatingwell.com/category/4305/weight-loss-meal-plans/")
+# docs1 = loader1.load()
 # docs2 = loader2.load()
-# docs3 = loader3.load()
+docs3 = loader3.load()
 # combined_docs = docs1 + docs2 + docs3
 documents = RecursiveCharacterTextSplitter(
     chunk_size=1000, chunk_overlap=200
-).split_documents(docs1)
+).split_documents(docs3)
 vector = FAISS.from_documents(documents, GoogleGenerativeAIEmbeddings(model="models/embedding-001"))
 
 retriever = vector.as_retriever()
