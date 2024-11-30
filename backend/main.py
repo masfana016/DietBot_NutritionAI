@@ -11,6 +11,7 @@ from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt import tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph.state import CompiledStateGraph # type
+from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import  HumanMessage, SystemMessage
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -21,6 +22,14 @@ import uvicorn
 load_dotenv()
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash", 
@@ -193,7 +202,7 @@ async def generate_answer(user_input: UserInput):
 
 # Run the application
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8001, reload=True)
 
 
 
