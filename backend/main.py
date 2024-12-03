@@ -38,16 +38,16 @@ llm = ChatGoogleGenerativeAI(
 
 search = TavilySearchResults(tavily_api_key=os.getenv("TAVILY_API_KEY"))
 
-# loader1 = WebBaseLoader("https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat")
+loader1 = WebBaseLoader("https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat")
 # loader2 = WebBaseLoader("https://www.msdmanuals.com/home")
-loader3 = WebBaseLoader("https://www.eatingwell.com/category/4305/weight-loss-meal-plans/")
-# docs1 = loader1.load()
+# loader3 = WebBaseLoader("https://www.eatingwell.com/category/4305/weight-loss-meal-plans/")
+docs1 = loader1.load()
 # docs2 = loader2.load()
-docs3 = loader3.load()
+# docs3 = loader3.load()
 # combined_docs = docs1 + docs2 + docs3
 documents = RecursiveCharacterTextSplitter(
     chunk_size=1000, chunk_overlap=200
-).split_documents(docs3)
+).split_documents(docs1)
 vector = FAISS.from_documents(documents, GoogleGenerativeAIEmbeddings(model="models/embedding-001"))
 
 retriever = vector.as_retriever()
@@ -77,9 +77,9 @@ def calorie_calculator_tool(gender: str, weight: float, height: float, age: int,
     def calculate_daily_calories(gender, weight, height, age, activity_level):
         # Basal Metabolic Rate (BMR) calculation
         if gender.lower() == "male":
-            bmr = 10 * weight + 6.25 * height - 5 * age + 5
+            bmr = 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age)
         elif gender.lower() == "female":
-            bmr = 10 * weight + 6.25 * height - 5 * age - 161
+            bmr = 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age)
         else:
             raise ValueError("Invalid sex. Please use 'male' or 'female'.")
 
@@ -97,6 +97,127 @@ def calorie_calculator_tool(gender: str, weight: float, height: float, age: int,
 
         # Calculate daily caloric needs
         daily_calories = bmr * activity_multipliers[activity_level]
+
+        base_calories = daily_calories  # Initialize with the calculated calories
+
+        if gender == "female":
+            if activity_level == "lightly":
+                if 2 <= age <= 6:
+                    base_calories = min(max(1000, daily_calories), 1400)
+                elif 7 <= age <= 18:
+                    base_calories = min(max(1200, daily_calories), 1800)
+                elif 19 <= age <= 60:
+                    base_calories = min(max(1600, daily_calories), 2000)
+                elif age >= 61:
+                    base_calories = max(1600, daily_calories)
+            elif activity_level == "active":
+                if 2 <= age <= 6:
+                    base_calories = min(max(1000, daily_calories), 1600)
+                elif 7 <= age <= 18:
+                    base_calories = min(max(1600, daily_calories), 2400)
+                elif 19 <= age <= 60:
+                    base_calories = min(max(1800, daily_calories), 2400)
+                elif age >= 61:
+                    base_calories = min(max(1800, daily_calories), 2000)
+
+        elif gender == "male":
+            if activity_level == "lightly":
+                if 2 <= age <= 6:
+                    base_calories = min(max(1000, daily_calories), 1400)
+                elif 7 <= age <= 18:
+                    base_calories = min(max(1400, daily_calories), 2400)
+                elif 19 <= age <= 60:
+                    base_calories = min(max(2200, daily_calories), 2600)
+                elif age >= 61:
+                    base_calories = max(2000, daily_calories)
+            elif activity_level == "active":
+                if 2 <= age <= 6:
+                    base_calories = min(max(1000, daily_calories), 1800)
+                elif 7 <= age <= 18:
+                    base_calories = min(max(1600, daily_calories), 3200)
+                elif 19 <= age <= 60:
+                    base_calories = min(max(2400, daily_calories), 3000)
+                elif age >= 61:
+                    base_calories = min(max(2200, daily_calories), 2600)
+
+        # Determine if the user needs to gain, lose, or maintain weight
+        if daily_calories < base_calories:
+            weight_goal = "You should increase your calorie intake to gain weight."
+        elif daily_calories > base_calories:
+            weight_goal = "You should decrease your calorie intake to lose weight."
+        else:
+            weight_goal = "Your calorie intake is appropriate for maintaining your current weight."
+
+        # Define diet plans
+        diet_plans = {
+            "1500": {
+                "goal": "Weight Loss",
+                "plan": [
+                    "Breakfast: Greek yogurt with berries and chia seeds or oatmeal with sliced banana",
+                    "Morning Snack: Apple with almond butter or a handful of mixed nuts",
+                    "Lunch: Grilled chicken salad with greens and vinaigrette or quinoa salad with chickpeas and cucumber",
+                    "Afternoon Snack: Cottage cheese with cucumber or carrot sticks with hummus",
+                    "Dinner: Baked salmon, asparagus, and quinoa or stir-fried tofu with broccoli and brown rice",
+                    "Evening Snack: Almonds or a small piece of dark chocolate"
+                ]
+            },
+            "1800": {
+                "goal": "Weight Maintenance",
+                "plan": [
+                    "Breakfast: Scrambled eggs with spinach, whole-grain toast or smoothie with spinach and protein powder",
+                    "Morning Snack: Orange and walnuts or Greek yogurt with honey",
+                    "Lunch: Turkey wrap with hummus and veggies or lentil soup with whole-grain bread",
+                    "Afternoon Snack: Banana with peanut butter or rice cakes with avocado",
+                    "Dinner: Grilled chicken, sweet potato, and broccoli or baked tilapia with quinoa and green beans",
+                    "Evening Snack: Cottage cheese with berries or air-popped popcorn"
+                ]
+            },
+            "2000": {
+                "goal": "Moderate Weight Gain",
+                "plan": [
+                    "Breakfast: Overnight oats with banana and peanut butter or avocado toast with eggs",
+                    "Morning Snack: Smoothie with protein powder or a protein bar",
+                    "Lunch: Brown rice bowl with black beans and salsa or chicken stir-fry with vegetables",
+                    "Afternoon Snack: Toast with cottage cheese and tomatoes or fruit salad",
+                    "Dinner: Steak, mashed potatoes, and green beans or chicken curry with brown rice",
+                    "Evening Snack: Greek yogurt with honey and pumpkin seeds or protein shake"
+                ]
+            },
+            "2200": {
+                "goal": "Active Weight Maintenance/Gain",
+                "plan": [
+                    "Breakfast: Omelet with veggies and whole-grain toast or smoothie bowl with fruits and granola",
+                    "Morning Snack: Greek yogurt with granola and blueberries or nut butter on whole-grain bread",
+                    "Lunch: Tuna wrap with veggies or quinoa salad with chickpeas and feta",
+                    "Afternoon Snack: Apple and almonds or veggie sticks with hummus",
+                    "Dinner: Roasted chicken, brown rice, and carrots or fish tacos with cabbage slaw",
+                    "Evening Snack: Dark chocolate with walnuts or a handful of dried fruit"
+                ]
+            },
+            "2500": {
+                "goal": "High-Calorie for Weight Gain",
+                "plan": [
+                    "Breakfast: Smoothie bowl with peanut butter and granola or pancakes with maple syrup",
+                    "Morning Snack: Crackers with cheese and apple or energy bites with oats and honey",
+                    "Lunch: Quinoa bowl with chickpeas and roasted veggies or burrito with beans and cheese",
+                    "Afternoon Snack: Protein bar or mixed nuts and dried fruit or yogurt with granola",
+                    "Dinner: Pasta with ground turkey and salad or lamb kebabs with rice and grilled vegetables",
+                    "Evening Snack: Cottage cheese with honey and mango or fruit and nut mix"
+                ]
+            }
+        }
+
+        # Select the appropriate diet plan based on the calculated calories
+        if daily_calories <= 1500:
+            selected_diet_plan = diet_plans["1500"]
+        elif daily_calories <= 1800:
+            selected_diet_plan = diet_plans["1800"]
+        elif daily_calories <= 2000:
+            selected_diet_plan = diet_plans["2000"]
+        elif daily_calories <= 2200:
+            selected_diet_plan = diet_plans["2200"]
+        else:
+            selected_diet_plan = diet_plans["2500"]
         
         # Create a maintenance plan
         maintenance_plan = {
@@ -108,21 +229,163 @@ def calorie_calculator_tool(gender: str, weight: float, height: float, age: int,
         return {
             "bmr": round(bmr, 2),
             "daily_calories": round(daily_calories, 2),
-            "maintenance_plan": maintenance_plan
+            "maintenance_plan": maintenance_plan,
+            "weight_goal": weight_goal,
+            "selected_diet_plan": selected_diet_plan
         }
 
     # Return calculated daily calories
     return calculate_daily_calories(gender, weight, height, age, activity_level)
 
+# def weight_goal_and_diet_plan(daily_calories, gender, age, activity_level):
+    
+#     """
+#     This function takes the gender, age, activity level, anddaily_caloriesas input,
+#     and returns a weight goal along with a suggested diet plan based on the calorie intake.
+
+#     :param gender: str - "female" or "male"
+#     :param age: int - the age of the user
+#     :param activity_level: str - "lightly" or "active"
+#     :param calories: int - the calculated calorie intake
+#     :return: dict - containing weight goal and suggested diet plan
+#     """
+
+#     base_calories = daily_calories  # Initialize with the calculated calories
+
+#     if gender == "female":
+#         if activity_level == "lightly":
+#             if 2 <= age <= 6:
+#                 base_calories = min(max(1000, daily_calories), 1400)
+#             elif 7 <= age <= 18:
+#                 base_calories = min(max(1200, daily_calories), 1800)
+#             elif 19 <= age <= 60:
+#                 base_calories = min(max(1600, daily_calories), 2000)
+#             elif age >= 61:
+#                 base_calories = max(1600, daily_calories)
+#         elif activity_level == "active":
+#             if 2 <= age <= 6:
+#                 base_calories = min(max(1000, daily_calories), 1600)
+#             elif 7 <= age <= 18:
+#                 base_calories = min(max(1600, daily_calories), 2400)
+#             elif 19 <= age <= 60:
+#                 base_calories = min(max(1800, daily_calories), 2400)
+#             elif age >= 61:
+#                 base_calories = min(max(1800, daily_calories), 2000)
+
+#     elif gender == "male":
+#         if activity_level == "lightly":
+#             if 2 <= age <= 6:
+#                 base_calories = min(max(1000, daily_calories), 1400)
+#             elif 7 <= age <= 18:
+#                 base_calories = min(max(1400, daily_calories), 2400)
+#             elif 19 <= age <= 60:
+#                 base_calories = min(max(2200, daily_calories), 2600)
+#             elif age >= 61:
+#                 base_calories = max(2000, daily_calories)
+#         elif activity_level == "active":
+#             if 2 <= age <= 6:
+#                 base_calories = min(max(1000, daily_calories), 1800)
+#             elif 7 <= age <= 18:
+#                 base_calories = min(max(1600, daily_calories), 3200)
+#             elif 19 <= age <= 60:
+#                 base_calories = min(max(2400, daily_calories), 3000)
+#             elif age >= 61:
+#                 base_calories = min(max(2200, daily_calories), 2600)
+
+#     # Determine if the user needs to gain, lose, or maintain weight
+#     if daily_calories < base_calories:
+#         weight_goal = "You should increase your calorie intake to gain weight."
+#     elif daily_calories > base_calories:
+#         weight_goal = "You should decrease your calorie intake to lose weight."
+#     else:
+#         weight_goal = "Your calorie intake is appropriate for maintaining your current weight."
+
+#     # Define diet plans
+#     diet_plans = {
+#         "1500": {
+#             "goal": "Weight Loss",
+#             "plan": [
+#                 "Breakfast: Greek yogurt with berries and chia seeds or oatmeal with sliced banana",
+#                 "Morning Snack: Apple with almond butter or a handful of mixed nuts",
+#                 "Lunch: Grilled chicken salad with greens and vinaigrette or quinoa salad with chickpeas and cucumber",
+#                 "Afternoon Snack: Cottage cheese with cucumber or carrot sticks with hummus",
+#                 "Dinner: Baked salmon, asparagus, and quinoa or stir-fried tofu with broccoli and brown rice",
+#                 "Evening Snack: Almonds or a small piece of dark chocolate"
+#             ]
+#         },
+#         "1800": {
+#             "goal": "Weight Maintenance",
+#             "plan": [
+#                 "Breakfast: Scrambled eggs with spinach, whole-grain toast or smoothie with spinach and protein powder",
+#                 "Morning Snack: Orange and walnuts or Greek yogurt with honey",
+#                 "Lunch: Turkey wrap with hummus and veggies or lentil soup with whole-grain bread",
+#                 "Afternoon Snack: Banana with peanut butter or rice cakes with avocado",
+#                 "Dinner: Grilled chicken, sweet potato, and broccoli or baked tilapia with quinoa and green beans",
+#                 "Evening Snack: Cottage cheese with berries or air-popped popcorn"
+#             ]
+#         },
+#         "2000": {
+#             "goal": "Moderate Weight Gain",
+#             "plan": [
+#                 "Breakfast: Overnight oats with banana and peanut butter or avocado toast with eggs",
+#                 "Morning Snack: Smoothie with protein powder or a protein bar",
+#                 "Lunch: Brown rice bowl with black beans and salsa or chicken stir-fry with vegetables",
+#                 "Afternoon Snack: Toast with cottage cheese and tomatoes or fruit salad",
+#                 "Dinner: Steak, mashed potatoes, and green beans or chicken curry with brown rice",
+#                 "Evening Snack: Greek yogurt with honey and pumpkin seeds or protein shake"
+#             ]
+#         },
+#         "2200": {
+#             "goal": "Active Weight Maintenance/Gain",
+#             "plan": [
+#                 "Breakfast: Omelet with veggies and whole-grain toast or smoothie bowl with fruits and granola",
+#                 "Morning Snack: Greek yogurt with granola and blueberries or nut butter on whole-grain bread",
+#                 "Lunch: Tuna wrap with veggies or quinoa salad with chickpeas and feta",
+#                 "Afternoon Snack: Apple and almonds or veggie sticks with hummus",
+#                 "Dinner: Roasted chicken, brown rice, and carrots or fish tacos with cabbage slaw",
+#                 "Evening Snack: Dark chocolate with walnuts or a handful of dried fruit"
+#             ]
+#         },
+#         "2500": {
+#             "goal": "High-Calorie for Weight Gain",
+#             "plan": [
+#                 "Breakfast: Smoothie bowl with peanut butter and granola or pancakes with maple syrup",
+#                 "Morning Snack: Crackers with cheese and apple or energy bites with oats and honey",
+#                 "Lunch: Quinoa bowl with chickpeas and roasted veggies or burrito with beans and cheese",
+#                 "Afternoon Snack: Protein bar or mixed nuts and dried fruit or yogurt with granola",
+#                 "Dinner: Pasta with ground turkey and salad or lamb kebabs with rice and grilled vegetables",
+#                 "Evening Snack: Cottage cheese with honey and mango or fruit and nut mix"
+#             ]
+#         }
+#     }
+
+#     # Select the appropriate diet plan based on the calculated calories
+#     if daily_calories <= 1500:
+#         selected_diet_plan = diet_plans["1500"]
+#     elif daily_calories <= 1800:
+#         selected_diet_plan = diet_plans["1800"]
+#     elif daily_calories <= 2000:
+#         selected_diet_plan = diet_plans["2000"]
+#     elif daily_calories <= 2200:
+#         selected_diet_plan = diet_plans["2200"]
+#     else:
+#         selected_diet_plan = diet_plans["2500"]
+
+#     return {
+#         "weight_goal": weight_goal,
+#         "selected_diet_plan": selected_diet_plan
+#     }
+
 
 tools = [search, retriever_tool, calorie_calculator_tool]
+
 
 llm_with_tools = llm.bind_tools(tools)
 
 # System message
 sys_msg = SystemMessage(content='''You are a helpful customer support assistant for human calorie calculation.
             You need to gather the following information from the user:
-            - Person's age, weight, height, gender/pronouns (e.g., she, he, or similar), and activity level (e.g., sedentary, moderate, active, very active).
+            - Person's age, weight, height, gender /pronouns (e.g., she, he, or similar), and activity level (e.g., sedentary, moderate, active, very active).
             
             Based on their gender/pronouns, infer if the user is male or female. Do this implicitly and avoid explicitly asking about gender. 
             Similarly, if they provide information about their daily routine or habits, interpret their activity level. 
@@ -147,6 +410,10 @@ sys_msg = SystemMessage(content='''You are a helpful customer support assistant 
                 - Split the doc1 into smaller chunks with `RecursiveCharacterTextSplitter` to ensure the content is manageable and precise.
                 - Use `FAISS` for vectorizing documents and creating a retriever tool, which can search for the most relevant information.
 
+            **calories calculated tool**:
+            - **Calorie Calculation**: Once you have the user's details, use the following logic to calculate the required daily calorie intake based on gender, age, weight, and activity level.
+            - **Weight Goal and Diet Plan Tool**: After calculating the calories, use this tool to determine if the user needs to gain, lose, or maintain weight, and provide them with a personalized diet plan based on their calorie needs.
+                                 
             **Retriever Tool for Searching Information**:
             - Create a `retriever_tool` from the vector retriever to search through the documents. For any user questions related to food, nutrition, health or healthy diets, use the retriever to fetch relevant content from Healthline, MSD Manual, or EatingWell.
             

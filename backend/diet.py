@@ -254,3 +254,10 @@ async def generate_answer(user_input: UserInput):
 
 if __name__ == "_main_":
     uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)
+
+
+
+
+# **To check bugs or errors**
+    # Bug SNACK
+    # Sentary
