@@ -16,6 +16,10 @@ fastapi = "^0.115.3"
 faiss-cpu = "1.8.0.post1"
 beautifulsoup4 = "^4.12.3"
 langgraph = "^0.2.53"
+sqlmodel = "^0.0.22"
+bcrypt = "^4.2.1"
+psycopg2-binary = "^2.9.10"
+pydentic = "^0.0.1.dev3"
 
 [tool.poetry.scripts]
 dev = 'main:__name__'
