@@ -47,7 +47,7 @@ class Appointment(SQLModel, table=True):
     specialization: str
 
 # Create a SQLite database
-engine = create_engine("postgresql://postgres.dbizmdqadvdavqvgkdjn:masfaansari1999@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres")
+engine = create_engine("postgresql://postgres...")
 SQLModel.metadata.create_all(engine)
 
 # Correcting the book_appointment function
