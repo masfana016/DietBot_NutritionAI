@@ -28,7 +28,7 @@ const ChatPage = () => {
 
     try {
       // Make POST request to the FastAPI endpoint
-      const response = await fetch("http://127.0.0.1:8002/generateanswer", {
+      const response = await fetch("http://127.0.0.1:8003/generateanswer", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

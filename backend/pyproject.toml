@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "backend langchain"
+name = "book"
 version = "0.1.0"
 description = ""
 authors = ["Masfa Nasrullah Ansari"]
@@ -20,9 +20,10 @@ sqlmodel = "^0.0.22"
 bcrypt = "^4.2.1"
 psycopg2-binary = "^2.9.10"
 pydentic = "^0.0.1.dev3"
+sqlalchemy = "^2.0.36"
 
 [tool.poetry.scripts]
-dev = 'main:__name__'
+dev = 'book.book_nutritionist:start'
 
 [build-system]
 requires = ["poetry-core"]

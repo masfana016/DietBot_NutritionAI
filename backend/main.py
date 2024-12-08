@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import  HumanMessage, SystemMessage
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from sqlmodel import SQLModel, Field, create_engine, Session
+from typing import Optional
 import os
 from fastapi import FastAPI, HTTPException
 import uvicorn
@@ -35,6 +37,41 @@ llm = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash", 
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
+
+# Define the database model for appointments
+class Appointment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    doctor: str
+    date: str
+    time: str
+    specialization: str
+
+# Create a SQLite database
+engine = create_engine("postgresql://postgres.dbizmdqadvdavqvgkdjn:masfaansari1999@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres")
+SQLModel.metadata.create_all(engine)
+
+# Correcting the book_appointment function
+def book_appointment(doctor: str, date: str, time: str, specialization: str) -> str:
+    """Books an appointment and saves it in the database.
+    
+    Args:
+        doctor: The name of the doctor with whom the appointment is booked.
+        specialization: The specialization of the doctor.
+        date: The date of the appointment (YYYY-MM-DD).
+        time: The time of the appointment (HH:MM).
+    
+    Returns:
+        Confirmation message with appointment details.
+    """
+    try:
+        # Use correct field names
+        appointment = Appointment(doctor=doctor, date=date, time=time, specialization=specialization)
+        with Session(engine) as session:
+            session.add(appointment)
+            session.commit()
+        return f"Appointment booked successfully with Dr. {doctor} (Specialization: {specialization}) on {date} at {time}."
+    except Exception as e:
+        return f"Failed to book appointment: {str(e)}"
 
 search = TavilySearchResults(tavily_api_key=os.getenv("TAVILY_API_KEY"))
 
@@ -377,7 +414,7 @@ def calorie_calculator_tool(gender: str, weight: float, height: float, age: int,
 #     }
 
 
-tools = [search, retriever_tool, calorie_calculator_tool]
+tools = [search, retriever_tool, calorie_calculator_tool, book_appointment]
 
 
 llm_with_tools = llm.bind_tools(tools)
@@ -413,7 +450,9 @@ sys_msg = SystemMessage(content='''You are a helpful customer support assistant 
             **calories calculated tool**:
             - **Calorie Calculation**: Once you have the user's details, use the following logic to calculate the required daily calorie intake based on gender, age, weight, and activity level.
             - **Weight Goal and Diet Plan Tool**: After calculating the calories, use this tool to determine if the user needs to gain, lose, or maintain weight, and provide them with a personalized diet plan based on their calorie needs.
-                                 
+            **Booking Appointmnet** 
+            -One of you primary task is Assisting with booking appointments by collecting and processing relevant details. If a task requires a tool, invoke the appropriate tool and share the results.              
+            
             **Retriever Tool for Searching Information**:
             - Create a `retriever_tool` from the vector retriever to search through the documents. For any user questions related to food, nutrition, health or healthy diets, use the retriever to fetch relevant content from Healthline, MSD Manual, or EatingWell.
             

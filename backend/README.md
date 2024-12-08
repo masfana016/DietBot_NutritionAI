@@ -50,7 +50,7 @@ const Chatbot = () => {
       setInput('');
 
       try {
-        const response = await axios.post('http://localhost:8080/chat', {
+        const response = await axios.post('http://localhost:8003/chat', {
           input,
           // Send any additional parameters for diet calculations if needed
           age: 25,  // Replace with dynamic values if necessary
