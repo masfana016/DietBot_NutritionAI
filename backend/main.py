@@ -4,6 +4,9 @@ from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.tools.retriever import create_retriever_tool
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.indexes import VectorstoreIndexCreator
+from langchain_community.document_loaders import TextLoader
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, START
 from langgraph.graph import MessagesState
@@ -38,6 +41,49 @@ llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
 
+
+# Setup the RAG model and FAISS VectorStore
+embedding = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+text_splitter = CharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
+
+try:
+    loader = TextLoader("nutritionists.txt")
+    index_creator = VectorstoreIndexCreator(
+        embedding=embedding, 
+        vectorstore_cls=FAISS,
+        text_splitter=text_splitter
+    )
+    index = index_creator.from_loaders([loader])
+except Exception as e:
+    print("Error while loading or indexing the document:", e)
+    index = None  # Set to None if there's an issue
+
+# Define the RAG query tool for nutritionist data
+def rag_query_tool(user_input: str) -> str:
+    """
+    Query the RAG model to retrieve nutritionist information.
+
+    Args:
+        user_input: The query string from the user.
+
+    Returns:
+        A string response with nutritionist details or an error message.
+    """
+    if not index:
+        return "Nutritionist data index is not available."
+    try:
+        response = index.query(user_input, llm=llm)
+
+        if response:
+            # Assuming response is structured, return it formatted.
+            return response
+        else:
+            return "No relevant nutritionist information found for your query."
+    except Exception as e:
+        return f"Error while querying nutritionist data: {e}"
+
+
+
 # Define the database model for appointments
 class Appointment(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -47,7 +93,7 @@ class Appointment(SQLModel, table=True):
     specialization: str
 
 # Create a SQLite database
-engine = create_engine("postgresql://postgres.dbizmdqadvdavqvgkdjn:masfaansari1999@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres")
+engine = create_engine(os.getenv('DB_URI'))
 SQLModel.metadata.create_all(engine)
 
 # Correcting the book_appointment function
@@ -274,192 +320,51 @@ def calorie_calculator_tool(gender: str, weight: float, height: float, age: int,
     # Return calculated daily calories
     return calculate_daily_calories(gender, weight, height, age, activity_level)
 
-# def weight_goal_and_diet_plan(daily_calories, gender, age, activity_level):
-    
-#     """
-#     This function takes the gender, age, activity level, anddaily_caloriesas input,
-#     and returns a weight goal along with a suggested diet plan based on the calorie intake.
 
-#     :param gender: str - "female" or "male"
-#     :param age: int - the age of the user
-#     :param activity_level: str - "lightly" or "active"
-#     :param calories: int - the calculated calorie intake
-#     :return: dict - containing weight goal and suggested diet plan
-#     """
-
-#     base_calories = daily_calories  # Initialize with the calculated calories
-
-#     if gender == "female":
-#         if activity_level == "lightly":
-#             if 2 <= age <= 6:
-#                 base_calories = min(max(1000, daily_calories), 1400)
-#             elif 7 <= age <= 18:
-#                 base_calories = min(max(1200, daily_calories), 1800)
-#             elif 19 <= age <= 60:
-#                 base_calories = min(max(1600, daily_calories), 2000)
-#             elif age >= 61:
-#                 base_calories = max(1600, daily_calories)
-#         elif activity_level == "active":
-#             if 2 <= age <= 6:
-#                 base_calories = min(max(1000, daily_calories), 1600)
-#             elif 7 <= age <= 18:
-#                 base_calories = min(max(1600, daily_calories), 2400)
-#             elif 19 <= age <= 60:
-#                 base_calories = min(max(1800, daily_calories), 2400)
-#             elif age >= 61:
-#                 base_calories = min(max(1800, daily_calories), 2000)
-
-#     elif gender == "male":
-#         if activity_level == "lightly":
-#             if 2 <= age <= 6:
-#                 base_calories = min(max(1000, daily_calories), 1400)
-#             elif 7 <= age <= 18:
-#                 base_calories = min(max(1400, daily_calories), 2400)
-#             elif 19 <= age <= 60:
-#                 base_calories = min(max(2200, daily_calories), 2600)
-#             elif age >= 61:
-#                 base_calories = max(2000, daily_calories)
-#         elif activity_level == "active":
-#             if 2 <= age <= 6:
-#                 base_calories = min(max(1000, daily_calories), 1800)
-#             elif 7 <= age <= 18:
-#                 base_calories = min(max(1600, daily_calories), 3200)
-#             elif 19 <= age <= 60:
-#                 base_calories = min(max(2400, daily_calories), 3000)
-#             elif age >= 61:
-#                 base_calories = min(max(2200, daily_calories), 2600)
-
-#     # Determine if the user needs to gain, lose, or maintain weight
-#     if daily_calories < base_calories:
-#         weight_goal = "You should increase your calorie intake to gain weight."
-#     elif daily_calories > base_calories:
-#         weight_goal = "You should decrease your calorie intake to lose weight."
-#     else:
-#         weight_goal = "Your calorie intake is appropriate for maintaining your current weight."
-
-#     # Define diet plans
-#     diet_plans = {
-#         "1500": {
-#             "goal": "Weight Loss",
-#             "plan": [
-#                 "Breakfast: Greek yogurt with berries and chia seeds or oatmeal with sliced banana",
-#                 "Morning Snack: Apple with almond butter or a handful of mixed nuts",
-#                 "Lunch: Grilled chicken salad with greens and vinaigrette or quinoa salad with chickpeas and cucumber",
-#                 "Afternoon Snack: Cottage cheese with cucumber or carrot sticks with hummus",
-#                 "Dinner: Baked salmon, asparagus, and quinoa or stir-fried tofu with broccoli and brown rice",
-#                 "Evening Snack: Almonds or a small piece of dark chocolate"
-#             ]
-#         },
-#         "1800": {
-#             "goal": "Weight Maintenance",
-#             "plan": [
-#                 "Breakfast: Scrambled eggs with spinach, whole-grain toast or smoothie with spinach and protein powder",
-#                 "Morning Snack: Orange and walnuts or Greek yogurt with honey",
-#                 "Lunch: Turkey wrap with hummus and veggies or lentil soup with whole-grain bread",
-#                 "Afternoon Snack: Banana with peanut butter or rice cakes with avocado",
-#                 "Dinner: Grilled chicken, sweet potato, and broccoli or baked tilapia with quinoa and green beans",
-#                 "Evening Snack: Cottage cheese with berries or air-popped popcorn"
-#             ]
-#         },
-#         "2000": {
-#             "goal": "Moderate Weight Gain",
-#             "plan": [
-#                 "Breakfast: Overnight oats with banana and peanut butter or avocado toast with eggs",
-#                 "Morning Snack: Smoothie with protein powder or a protein bar",
-#                 "Lunch: Brown rice bowl with black beans and salsa or chicken stir-fry with vegetables",
-#                 "Afternoon Snack: Toast with cottage cheese and tomatoes or fruit salad",
-#                 "Dinner: Steak, mashed potatoes, and green beans or chicken curry with brown rice",
-#                 "Evening Snack: Greek yogurt with honey and pumpkin seeds or protein shake"
-#             ]
-#         },
-#         "2200": {
-#             "goal": "Active Weight Maintenance/Gain",
-#             "plan": [
-#                 "Breakfast: Omelet with veggies and whole-grain toast or smoothie bowl with fruits and granola",
-#                 "Morning Snack: Greek yogurt with granola and blueberries or nut butter on whole-grain bread",
-#                 "Lunch: Tuna wrap with veggies or quinoa salad with chickpeas and feta",
-#                 "Afternoon Snack: Apple and almonds or veggie sticks with hummus",
-#                 "Dinner: Roasted chicken, brown rice, and carrots or fish tacos with cabbage slaw",
-#                 "Evening Snack: Dark chocolate with walnuts or a handful of dried fruit"
-#             ]
-#         },
-#         "2500": {
-#             "goal": "High-Calorie for Weight Gain",
-#             "plan": [
-#                 "Breakfast: Smoothie bowl with peanut butter and granola or pancakes with maple syrup",
-#                 "Morning Snack: Crackers with cheese and apple or energy bites with oats and honey",
-#                 "Lunch: Quinoa bowl with chickpeas and roasted veggies or burrito with beans and cheese",
-#                 "Afternoon Snack: Protein bar or mixed nuts and dried fruit or yogurt with granola",
-#                 "Dinner: Pasta with ground turkey and salad or lamb kebabs with rice and grilled vegetables",
-#                 "Evening Snack: Cottage cheese with honey and mango or fruit and nut mix"
-#             ]
-#         }
-#     }
-
-#     # Select the appropriate diet plan based on the calculated calories
-#     if daily_calories <= 1500:
-#         selected_diet_plan = diet_plans["1500"]
-#     elif daily_calories <= 1800:
-#         selected_diet_plan = diet_plans["1800"]
-#     elif daily_calories <= 2000:
-#         selected_diet_plan = diet_plans["2000"]
-#     elif daily_calories <= 2200:
-#         selected_diet_plan = diet_plans["2200"]
-#     else:
-#         selected_diet_plan = diet_plans["2500"]
-
-#     return {
-#         "weight_goal": weight_goal,
-#         "selected_diet_plan": selected_diet_plan
-#     }
-
-
-tools = [search, retriever_tool, calorie_calculator_tool, book_appointment]
+tools = [search, retriever_tool, calorie_calculator_tool, book_appointment, rag_query_tool]
 
 
 llm_with_tools = llm.bind_tools(tools)
 
 # System message
-sys_msg = SystemMessage(content='''You are a helpful customer support assistant for human calorie calculation.
-            You need to gather the following information from the user:
-            - Person's age, weight, height, gender /pronouns (e.g., she, he, or similar), and activity level (e.g., sedentary, moderate, active, very active).
-            
-            Based on their gender/pronouns, infer if the user is male or female. Do this implicitly and avoid explicitly asking about gender. 
-            Similarly, if they provide information about their daily routine or habits, interpret their activity level. 
-            
-            If you are unable to discern any of this information, politely ask them to clarify! 
-            Never make random guesses if the details remain unclear.
+sys_msg = SystemMessage(content='''You are a helpful customer support assistant specializing in calorie calculation, personalized diet plans, and health-related services. 
+Your key responsibilities include calculating users' daily calorie intake, providing tailored diet plans, and assisting with appointment bookings for nutritionists.
 
-            Once all the necessary information is gathered, call the relevant tool to perform the calorie calculation.
+### **Calorie Calculation Assistant**:
+- Gather the following information from the user for calorie calculation:
+  - Age, weight, height, pronouns (e.g., she/he/they), and activity level (e.g., sedentary, moderate, active, very active).
+- Infer the user's gender implicitly based on pronouns or context without explicitly asking about it.
+- Interpret activity level based on user-provided information about their routine or habits.
+- If any details are unclear, politely request clarification without making random guesses.
+- Once all required details are collected, call the calorie calculation tool and provide the result, followed by a diet plan based on their goals (e.g., weight gain, weight loss, or maintenance).
 
-            **Tool to check If user need to gain weight or loss weight**
-             - **adjust_calories_for_goal**: Adjust the daily caloric needs based on the user's goal (gain or lose weight). Use the user's provided age, gender, activity level, and calories to calculate adjusted caloric intake for the goal.
+### **Book Appointment Assistant**:
+- If the user requests an appointment, follow these steps:
+  1. Politely ask about their specific health concern or reason for the appointment (e.g., diet consultation, weight management, or a specific health issue).
+  2. Use the **rag_query_tool** to fetch a list of available nutritionists based on the user's requirements, showing their names, specializations, and available dates and times.
+  3. Present the user with the list of available nutritionists and their schedules, and ask them to select a preferred nutritionist, date, and time.
+  4. Once the user provides the details, confirm their choice and proceed to book the appointment using the **Book Appointment Tool**.
+  5. Provide a clear confirmation message summarizing the appointment details.
 
-            **Important Tools for Diet and Health Information**:
-            - **TavilySearchResults**: Use this tool to search for health, food, diet, and nutrition information by making API calls with `TAVILY_API_KEY`. This will help you gather relevant resources when a user asks for diet suggestions or general nutrition-related queries.
-            
-            - **Web Base Loader**:
-                - `loader1`: Extract data from [Healthline 1500 Calorie Diet](https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat).
-                
-            - **Document Handling**:
-                - Use `WebBaseLoader` to load content from the above health-related sites.
-                - Combine the documents from all three sources using `docs1 for a broader perspective.
-                - Split the doc1 into smaller chunks with `RecursiveCharacterTextSplitter` to ensure the content is manageable and precise.
-                - Use `FAISS` for vectorizing documents and creating a retriever tool, which can search for the most relevant information.
+### **Tools for Diet and Health Information**:
+- **TavilySearchResults**: Search for health, diet, and nutrition information using the `TAVILY_API_KEY` for API calls.
+- **WebBaseLoader**:
+  - `loader1`: Extract data from [Healthline 1500 Calorie Diet](https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat).
+  - Combine content into `docs1` for a comprehensive perspective.
+  - Split `docs1` into smaller chunks using `RecursiveCharacterTextSplitter`.
+  - Use `FAISS` to create a retriever tool for querying relevant content.
 
-            **calories calculated tool**:
-            - **Calorie Calculation**: Once you have the user's details, use the following logic to calculate the required daily calorie intake based on gender, age, weight, and activity level.
-            - **Weight Goal and Diet Plan Tool**: After calculating the calories, use this tool to determine if the user needs to gain, lose, or maintain weight, and provide them with a personalized diet plan based on their calorie needs.
-            **Booking Appointmnet** 
-            -One of you primary task is Assisting with booking appointments by collecting and processing relevant details. If a task requires a tool, invoke the appropriate tool and share the results.              
-            
-            **Retriever Tool for Searching Information**:
-            - Create a `retriever_tool` from the vector retriever to search through the documents. For any user questions related to food, nutrition, health or healthy diets, use the retriever to fetch relevant content from Healthline, MSD Manual, or EatingWell.
-            
-            **When answering questions**:
-            - Always use the retriever tool to provide concise and relevant answers about food, nutrition, and diet. Don't over-explain; just provide the information needed. 
-            After gathering the user's details and answering any inquiries, proceed to calculate the user's calorie needs and provide a personalized diet plan.
-''')
+### **Retriever Tool for Answering Questions**:
+- Use the `retriever_tool` to provide concise, relevant answers about food, nutrition, and diet.
+- Fetch the most relevant content from sources like Healthline or EatingWell when users ask diet or health-related questions.
+
+### **Guidelines for Interaction**:
+1. Always maintain a conversational and polite tone.
+2. Verify all user details before proceeding with any calculations or appointments.
+3. Use the appropriate tools to perform tasks efficiently and ensure accurate results.
+4. Provide clear and concise responses, avoiding unnecessary details unless requested.
+
+By effectively managing calorie calculations, diet plans, and appointment bookings, aim to offer a seamless and user-friendly experience.''')
 
 
 # Node

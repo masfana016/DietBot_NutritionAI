@@ -1,0 +1,49 @@
+Name: Dr. Ayesha Khan
+Specialization: Weight Management
+Date: 2024-12-15, 2024-12-18, 2024-12-20
+Time: 10:00 AM - 12:00 PM, 2:00 PM - 4:00 PM, 9:00 AM - 11:00 AM
+
+Name: Dr. Ali Raza
+Specialization: Sports Nutrition
+Date: 2024-12-16, 2024-12-19, 2024-12-22
+Time: 2:00 PM - 4:00 PM, 10:00 AM - 12:00 PM, 3:00 PM - 5:00 PM
+
+Name: Dr. Fatima Ahmed
+Specialization: Diabetes Management
+Date: 2024-12-17, 2024-12-21, 2024-12-24
+Time: 9:00 AM - 11:00 AM, 11:00 AM - 1:00 PM, 4:00 PM - 6:00 PM
+
+Name: Dr. Saad Iqbal
+Specialization: Pediatric Nutrition
+Date: 2024-12-18, 2024-12-20, 2024-12-25
+Time: 11:00 AM - 1:00 PM, 9:00 AM - 11:00 AM, 2:00 PM - 4:00 PM
+
+Name: Dr. Nadia Sheikh
+Specialization: Cardiac Health Diet
+Date: 2024-12-19, 2024-12-22, 2024-12-27
+Time: 3:00 PM - 5:00 PM, 10:00 AM - 12:00 PM, 11:00 AM - 1:00 PM
+
+Name: Dr. Kamran Shahid
+Specialization: General Wellness
+Date: 2024-12-20, 2024-12-23, 2024-12-26
+Time: 10:00 AM - 12:00 PM, 2:00 PM - 4:00 PM, 1:00 PM - 3:00 PM
+
+Name: Dr. Sara Malik
+Specialization: Renal Nutrition
+Date: 2024-12-21, 2024-12-24, 2024-12-28
+Time: 1:00 PM - 3:00 PM, 11:00 AM - 1:00 PM, 4:00 PM - 6:00 PM
+
+Name: Dr. Hassan Mehmood
+Specialization: Immunity-Boosting Diets
+Date: 2024-12-22, 2024-12-25, 2024-12-29
+Time: 2:00 PM - 4:00 PM, 3:00 PM - 5:00 PM, 9:00 AM - 11:00 AM
+
+Name: Dr. Saira Anwar
+Specialization: Geriatric Nutrition
+Date: 2024-12-23, 2024-12-26, 2024-12-30
+Time: 11:00 AM - 1:00 PM, 4:00 PM - 6:00 PM, 10:00 AM - 12:00 PM
+
+Name: Dr. Zainab Qureshi
+Specialization: Post-Surgery Recovery Diets
+Date: 2024-12-24, 2024-12-28, 2024-12-31
+Time: 4:00 PM - 6:00 PM, 2:00 PM - 4:00 PM, 11:00 AM - 1:00 PM
