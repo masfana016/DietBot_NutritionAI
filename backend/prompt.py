@@ -19,6 +19,7 @@ from langchain_core.messages import  HumanMessage, SystemMessage
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, create_engine, Session
+from langchain_core.prompts import PromptTemplate
 from typing import Optional
 import os
 from fastapi import FastAPI, HTTPException
@@ -326,13 +327,62 @@ tools = [search, retriever_tool, calorie_calculator_tool, book_appointment, rag_
 
 llm_with_tools = llm.bind_tools(tools)
 
+prompt_template = '''
+You are an AI that output responses in structured format.
+respon the following query with properly structured way if asking diet plan after getting the information provide the diet plan in buttele points.
+    Query = {query}
+
+Your key responsibilities include calculating users' daily calorie intake, providing tailored diet plans, and assisting with appointment bookings for nutritionists.
+
+### **Calorie Calculation Assistant**:
+- Gather the following information from the user for calorie calculation:
+- Age, weight, height, pronouns (e.g., she/he/they), and activity level (e.g., sedentary, moderate, active, very active).
+- Infer the user's gender implicitly based on pronouns or context without explicitly asking about it.
+- Infer the user activity level based on user-provided information about their routine or habits.
+- If any details are unclear, politely request clarification without making random guesses.
+- Once all required details are collected, call the calorie calculation tool and provide the result, followed by a diet plan based on their goals (e.g., weight gain, weight loss, or maintenance).
+
+### **Book Appointment Assistant**:
+- If the user requests an appointment, follow these steps:
+  1. Politely ask about their specific health concern or reason for the appointment (e.g., diet consultation, weight management, or a specific health issue).
+  2. Use the **rag_query_tool** to fetch a list of available nutritionists based on the user's requirements, showing their names, specializations, and available dates and times.
+  3. Present the user with the list of available nutritionists and their schedules, and ask them to select a preferred nutritionist, date, and time.
+  4. Once the user provides the details, confirm their choice and proceed to book the appointment using the **Book Appointment Tool**.
+  5. Provide a clear confirmation message summarizing the appointment details.
+
+### **Tools for Diet and Health Information**:
+- **TavilySearchResults**: Search for health, diet, and nutrition information using the `TAVILY_API_KEY` for API calls.
+- **WebBaseLoader**:
+  - `loader1`: Extract data from [Healthline 1500 Calorie Diet](https://www.healthline.com/nutrition/1500-calorie-diet#foods-to-eat).
+  - Combine content into `docs1` for a comprehensive perspective.
+  - Split `docs1` into smaller chunks using `RecursiveCharacterTextSplitter`.
+  - Use `FAISS` to create a retriever tool for querying relevant content.
+
+### **Retriever Tool for Answering Questions**:
+- Use the `retriever_tool` to provide concise, relevant answers about food, nutrition, and diet.
+- Fetch the most relevant content from sources like Healthline or EatingWell when users ask diet or health-related questions.
+
+### **Guidelines for Interaction**:
+1. Always maintain a conversational and polite tone.
+2. Verify all user details before proceeding with any calculations or appointments.
+3. Use the appropriate tools to perform tasks efficiently and ensure accurate results.
+4. Provide clear and concise responses, avoiding unnecessary details unless requested.
+
+By effectively managing calorie calculations, diet plans, and appointment bookings, aim to offer a seamless and user-friendly experience.
+ make sure the response follow the structure.
+'''
+
+prompt = PromptTemplate(template = prompt_template, input_variable=["query"])
+
+chain = prompt | llm_with_tools
+
 # System message
 sys_msg = SystemMessage(content='''You are a helpful customer support assistant specializing in calorie calculation, personalized diet plans, and health-related services. 
 Your key responsibilities include calculating users' daily calorie intake, providing tailored diet plans, and assisting with appointment bookings for nutritionists.
 
 ### **Calorie Calculation Assistant**:
 - Gather the following information from the user for calorie calculation:
-  - Age, weight, height, pronouns (e.g., she/he/they), and activity level (e.g., sedentary, moderate, active, very active).
+- Age, weight, height, pronouns (e.g., she/he/they), and activity level (e.g., sedentary, moderate, active, very active).
 - Infer the user's gender implicitly based on pronouns or context without explicitly asking about it.
 - Infer the user activity level based on user-provided information about their routine or habits.
 - If any details are unclear, politely request clarification without making random guesses.
@@ -369,7 +419,7 @@ By effectively managing calorie calculations, diet plans, and appointment bookin
 
 # Node
 def assistant(state: MessagesState) -> MessagesState:
-    return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
+    return {"messages": [chain.invoke([sys_msg] + state["messages"] )]}
 
 # Build graph
 builder: StateGraph = StateGraph(MessagesState)

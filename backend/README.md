@@ -208,3 +208,7 @@ elif "loss" in weight_goal.lower():
             "Calories": int(base_calories * 0.20),
             "Suggestions": [
                 "Smoothie with spinach
+
+
+
+I an 25 years old lady having height 150 and weight is 45 and I am lazy girl
